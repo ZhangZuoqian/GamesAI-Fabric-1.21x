@@ -1,0 +1,58 @@
+pluginManagement {
+    repositories {
+        // Local mirror of kikugie plugins (stonecutter + loom-back-compat).
+        // The remote kikugie maven serves jars very slowly over this sandbox network,
+        // causing Gradle 9's plugin resolution to time out. Hosting the artifacts
+        // locally makes plugin resolution instant and offline-capable.
+        maven {
+            name = 'LocalKikuGie'
+            url = uri("${settingsDir}/libs/local-maven")
+        }
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+        maven {
+            name = 'KikuGie Releases'
+            url = 'https://maven.kikugie.dev/releases'
+        }
+        maven {
+            name = 'KikuGie Snapshots'
+            url = 'https://maven.kikugie.dev/snapshots'
+        }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            // The kikugie plugins are published under their real coordinates
+            // (dev.kikugie:stonecutter / dev.kikugie:loom-back-compat) rather than
+            // the gradle-plugin marker coordinates, so remap the plugin ids.
+            if (requested.id.id == 'dev.kikugie.stonecutter') {
+                useModule("dev.kikugie:stonecutter:${requested.version}")
+            }
+            if (requested.id.id == 'dev.kikugie.loom-back-compat') {
+                useModule("dev.kikugie:loom-back-compat:${requested.version}")
+            }
+        }
+    }
+}
+
+plugins {
+    // Check the latest version on https://stonecutter.kikugie.dev/blog/changes/0.9
+    // Requires Gradle 9+ (this project's wrapper pins Gradle 9.6.1)
+    id 'dev.kikugie.stonecutter' version '0.9.7'
+    // Applies the correct loom variant per Minecraft version (26.1+ unobfuscated vs <=1.21.11 obfuscated)
+    // https://codeberg.org/KikuGie/loom-back-compat
+    id 'dev.kikugie.loom-back-compat' version '0.4.2'
+}
+
+stonecutter {
+    create(rootProject) {
+        // See https://stonecutter.kikugie.dev/wiki/start/#choosing-minecraft-versions
+        // Each entry becomes a chiseled subproject under versions/<name>/
+        versions('1.21.1', '1.21.9', '1.21.10', '1.21.11')
+        version('26.2.x', '26.2')
+        vcsVersion = '26.2.x'
+    }
+}

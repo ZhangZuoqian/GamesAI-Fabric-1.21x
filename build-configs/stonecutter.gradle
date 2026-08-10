@@ -1,0 +1,34 @@
+// Stonecutter root controller script.
+//
+// Responsibilities:
+//   1. Declare which Stonecutter target is "active" for the current Gradle invocation.
+//   2. Configure global parameters (swaps / constants / dependencies) used by the
+//      `//?` comment processor when version-switching.
+//
+// Per-version build logic lives in build.gradle (the central script), evaluated once
+// per chiseled subproject with the per-version properties already merged in.
+//
+// Stonecutter generates `Set active project to <mc>` Gradle tasks that switch the
+// active version persistently by rewriting the literal below.
+
+plugins {
+    id 'dev.kikugie.stonecutter'
+}
+
+stonecutter.active '1.21.11'
+
+// See https://stonecutter.kikugie.dev/wiki/config/params
+stonecutter.parameters {
+    // Source-code swaps: `/*$mod_version*/` expands to the mod version literal,
+    // `/*$minecraft*/` expands to the active Minecraft version literal.
+    // `.toString()` is required: Groovy GStringImpl is not assignable to String.
+    swaps['mod_version'] = "\"${property('mod.version')}\";".toString()
+    swaps['minecraft'] = "\"${node.metadata.version}\";".toString()
+
+    // Boolean constant usable as `//? if release { ... }` in sources.
+    constants['release'] = property('mod.id') != 'template'
+
+    // Exposes the Fabric API version as a stonecutter dependency so sources can use
+    // `//? if fapi >= 0.116 { ... }` conditions across versions.
+    dependencies['fapi'] = node.project.property('deps.fabric_api') as String
+}

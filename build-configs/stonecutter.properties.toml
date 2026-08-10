@@ -1,0 +1,52 @@
+# Centralized Stonecutter properties.
+# See https://stonecutter.kikugie.dev/wiki/config/properties#centralized-properties
+#
+# Non-versioned keys below are shared by every chiseled node.
+# Per-version tables (["<node>"]) override / add keys for that node only.
+# Node names must match the versions registered in settings.gradle.
+
+# --- Mod metadata (shared) ---
+mod.id = "games_ai"
+mod.name = "GamesAI"
+mod.group = "io.github.pengzixuan30"
+mod.version = "0.2.0"
+
+# --- Loader / loom (shared) ---
+deps.fabric_loader = "0.18.4"
+# loom version used for the unobfuscated (26.1+) variant; loom-back-compat picks
+# the obfuscated loom variant automatically for <=1.21.11 nodes.
+loomx.loom_version = "1.17-SNAPSHOT"
+
+# --- Per-version properties ---
+["1.21.1"]
+# Mod compatibility range injected into fabric.mod.json
+mod.mc_compat = ">=1.21 <=1.21.1"
+# Releases marked compatible on Modrinth/Curseforge
+mod.mc_releases = ["1.21", "1.21.1"]
+deps.fabric_api = "0.116.15+1.21.1"
+# Java toolchain version required by this Minecraft version
+deps.java = 21
+
+["1.21.9"]
+mod.mc_compat = "1.21.9"
+mod.mc_releases = ["1.21.9"]
+deps.fabric_api = "0.134.1+1.21.9"
+deps.java = 21
+
+["1.21.10"]
+mod.mc_compat = "1.21.10"
+mod.mc_releases = ["1.21.10"]
+deps.fabric_api = "0.138.4+1.21.10"
+deps.java = 21
+
+["1.21.11"]
+mod.mc_compat = "1.21.11"
+mod.mc_releases = ["1.21.11"]
+deps.fabric_api = "0.141.6+1.21.11"
+deps.java = 21
+
+["26.2.x"]
+mod.mc_compat = "~26.2"
+mod.mc_releases = ["26.2"]
+deps.fabric_api = "0.152.1+26.2"
+deps.java = 25

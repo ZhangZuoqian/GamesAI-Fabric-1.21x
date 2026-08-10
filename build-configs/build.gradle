@@ -1,0 +1,171 @@
+// Central build script (Stonecutter "centralScript").
+// Evaluated once per chiseled node with the active node's per-version properties
+// (from stonecutter.properties.toml) already merged in. Version-specific values are
+// read through `sc.current.version` and `property(...)`, NOT hardcoded.
+
+plugins {
+    // Applies the correct loom variant based on the active Minecraft version
+    // (net.fabricmc.fabric-loom for 26.1+, net.fabricmc.fabric-loom-remap for <=1.21.11)
+    id 'dev.kikugie.loom-back-compat'
+    id 'maven-publish'
+}
+
+// Group is taken from the centralized properties (do not hardcode it).
+// `sc.node.project.property(...)` reads the stonecutter-merged properties on the
+// chiseled node's Gradle Project. Using `sc.properties[...]` does not work from
+// Groovy because Config#get<T> is a Kotlin reified extension.
+group = sc.node.project.property('mod.group') as String
+version = "${sc.node.project.property('mod.version')}+${sc.current.version}"
+base {
+    archivesName = sc.node.project.property('mod.id') as String
+}
+
+// Java toolchain version required by the active Minecraft version.
+// Sourced from stonecutter.properties.toml (deps.java) to avoid version comparisons.
+def targetJavaVersion = sc.node.project.property('deps.java') as int
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "games_ai" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+
+    // Useful for interface injection; shared across all nodes
+    fabricModJsonPath = rootProject.file('src/main/resources/fabric.mod.json')
+}
+
+fabricApi {
+    configureDataGeneration {
+        client = true
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'TerraformersMC'
+        url = 'https://maven.terraformersmc.com/releases/'
+    }
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+}
+
+dependencies {
+    // To change the versions see stonecutter.properties.toml
+    minecraft "com.mojang:minecraft:${sc.current.version}"
+    // Applies Mojang mappings on obfuscated (<=1.21.11) versions
+    loomx.applyMojangMappings()
+
+    // Use `mod{dependency type}` even on 26.1+ - loom-back-compat converts them
+    modImplementation "net.fabricmc:fabric-loader:${sc.node.project.property('deps.fabric_loader')}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${sc.node.project.property('deps.fabric_api')}"
+    // splitEnvironmentSourceSets(): client source set needs its own fabric-api on the
+    // client compile/runtime classpath so client-only APIs (e.g. ClientCommands) resolve.
+    modClientImplementation "net.fabricmc.fabric-api:fabric-api:${sc.node.project.property('deps.fabric_api')}"
+
+    // openai-java
+    implementation "com.openai:openai-java:4.43.0"
+    include "com.openai:openai-java-core:4.43.0"
+    include "com.openai:openai-java-client-okhttp:4.43.0"
+
+    // Kotlin
+    include "org.jetbrains.kotlin:kotlin-stdlib:2.4.10"
+    include "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.10"
+    include "org.jetbrains.kotlin:kotlin-reflect:2.4.10"
+
+    // Jackson (match openai-java transitive dependency versions)
+    include "com.fasterxml.jackson.core:jackson-databind:2.18.2"
+    include "com.fasterxml.jackson.core:jackson-core:2.18.2"
+    include "com.fasterxml.jackson.core:jackson-annotations:2.18.2"
+    include "com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2"
+    include "com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.18.2"
+    include "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2"
+
+    // OkHttp
+    include "com.squareup.okhttp3:okhttp:4.12.0"
+    include "com.squareup.okio:okio-jvm:3.9.0"
+
+    // SQLite
+    include "org.xerial:sqlite-jdbc:3.45.0.0"
+
+    // Groovy
+    implementation "org.apache.groovy:groovy:5.0.7"
+    include "org.apache.groovy:groovy:5.0.7"
+
+    // ModMenu (optional integration). Range capped below 18.0 because 18.0+ targets
+    // Minecraft 26.x and requires Java 25, which is incompatible with the 1.21.x nodes (Java 21).
+    // 17.0.0 is the release for 1.21.11; the API surface used here is stable across 14-17.
+    // `modCompileOnly` (not plain `compileOnly`) so Loom remaps intermediary class
+    // names (e.g. class_437 -> Screen) to the Mojang mappings used by this project.
+    modClientCompileOnly 'com.terraformersmc:modmenu:[14.0,18.0)'
+}
+
+processResources {
+    def mcVersion = sc.current.version
+    def loaderVersion = sc.node.project.property('deps.fabric_loader') as String
+    inputs.property 'version', project.version
+    inputs.property 'minecraft_version', mcVersion
+    inputs.property 'loader_version', loaderVersion
+    filteringCharset 'UTF-8'
+
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version,
+                'minecraft_version': mcVersion,
+                'loader_version': loaderVersion
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // ensure that the encoding is set to UTF-8, no matter what the system default is
+    it.options.encoding = 'UTF-8'
+    it.options.compilerArgs += ['-parameters']
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+    // if it is present.
+    withSourcesJar()
+}
+
+jar {
+    from('LICENSE') {
+        rename { "${it}_${sc.node.project.property('mod.id')}" }
+    }
+}
+
+// Builds the mod jars for the active node and collects them into build/libs/{mod version}/
+tasks.register('buildAndCollect', Copy) {
+    group = 'build'
+    description = 'Builds mod jars and copies results to build/libs/{mod version}/'
+    inputs.property 'version', sc.node.project.property('mod.version')
+    // loomx.modJar / loomx.modSourcesJar return the jar tasks for the applied loom variant
+    from(loomx.modJar.flatMap { it.archiveFile }, loomx.modSourcesJar.flatMap { it.archiveFile })
+    into(rootProject.layout.buildDirectory.file("libs/${sc.node.project.property('mod.version')}"))
+}
+
+// configure the maven publication
+publishing {
+    publications {
+        create('mavenJava', MavenPublication) {
+            artifactId = sc.node.project.property('mod.id') as String
+            from components.java
+        }
+    }
+
+    repositories {
+        // Add repositories to publish to here.
+    }
+}
